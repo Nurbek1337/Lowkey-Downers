@@ -1,4 +1,3 @@
-
 using UnityEngine;
 using System.Collections;
 
@@ -18,6 +17,7 @@ public class Health : MonoBehaviour
     private bool externalInvulnerability = false;
 
     private SpriteRenderer spriteRenderer;
+    private ParrySystem parrySystem;
 
     void Start()
     {
@@ -29,6 +29,14 @@ public class Health : MonoBehaviour
             spriteRenderer = visual.GetComponent<SpriteRenderer>();
         else
             spriteRenderer = GetComponent<SpriteRenderer>();
+
+        if (CompareTag("Player") || gameObject.name == "BossPlayer2")
+        {
+            parrySystem = GetComponent<ParrySystem>();
+
+            if (parrySystem == null)
+                parrySystem = gameObject.AddComponent<ParrySystem>();
+        }
     }
 
     void Update()
@@ -44,6 +52,9 @@ public class Health : MonoBehaviour
         if (isInvulnerable ||
             externalInvulnerability ||
             currentHealth <= 0)
+            return;
+
+        if (parrySystem != null && parrySystem.TryBlock())
             return;
 
         currentHealth -= damage;

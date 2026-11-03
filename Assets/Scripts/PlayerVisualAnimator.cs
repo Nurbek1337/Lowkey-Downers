@@ -6,6 +6,7 @@ public class PlayerVisualAnimator : MonoBehaviour
     private SpriteRenderer spriteRenderer;
     private Rigidbody2D body;
     private PlayerDash dash;
+    private ParrySystem parry;
 
     private string currentState = "";
     private string lockedState = "";
@@ -25,15 +26,31 @@ public class PlayerVisualAnimator : MonoBehaviour
         if (animator == null || spriteRenderer == null || body == null)
             return;
 
+        // Ищем систему парирования, даже если она добавилась позже
+        if (parry == null)
+            parry = GetComponentInParent<ParrySystem>();
+
         animator.speed = 1f;
 
         float x = Input.GetAxisRaw("Horizontal");
 
-        // Поворот персонажа
         if (x < -0.01f)
             spriteRenderer.flipX = true;
         else if (x > 0.01f)
             spriteRenderer.flipX = false;
+
+        // Парирование
+        if (parry != null && parry.ConsumeAnimationRequest())
+            PlayAction("Parry");
+
+        // Не перебиваем анимацию парирования
+        if (parry != null && parry.IsParrying)
+        {
+            if (currentState != "Parry")
+                ForcePlay("Parry");
+
+            return;
+        }
 
         // Бросок кинжала
         if (Input.GetMouseButtonDown(0))
@@ -49,24 +66,14 @@ public class PlayerVisualAnimator : MonoBehaviour
 
         string state;
 
-        // Пока проигрывается специальная анимация,
-        // не переключаем персонажа на ходьбу или Idle
         if (Time.time < lockUntil)
-        {
             state = lockedState;
-        }
         else if (body.linearVelocity.y > 0.2f)
-        {
             state = "Jump";
-        }
         else if (Mathf.Abs(x) > 0.01f)
-        {
             state = "Walk";
-        }
         else
-        {
             state = "Idle";
-        }
 
         PlayState(state);
     }
@@ -76,11 +83,31 @@ public class PlayerVisualAnimator : MonoBehaviour
         float length = GetClipLength(state);
 
         if (length <= 0f)
+        {
+            Debug.LogWarning("Не удалось запустить анимацию: " + state);
             return;
+        }
 
         lockedState = state;
         lockUntil = Time.time + length;
-        PlayState(state);
+
+        ForcePlay(state);
+    }
+
+    void ForcePlay(string state)
+    {
+        int hash = Animator.StringToHash(state);
+
+        if (!animator.HasState(0, hash))
+        {
+            Debug.LogWarning("Нет состояния Animator: " + state);
+            return;
+        }
+
+        animator.Play(hash, 0, 0f);
+        currentState = state;
+
+        Debug.Log("Запущена анимация: " + state);
     }
 
     void PlayState(string state)
@@ -88,14 +115,7 @@ public class PlayerVisualAnimator : MonoBehaviour
         if (currentState == state)
             return;
 
-        if (!animator.HasState(0, Animator.StringToHash(state)))
-        {
-            Debug.LogWarning("Нет состояния анимации: " + state);
-            return;
-        }
-
-        animator.Play(state, 0, 0f);
-        currentState = state;
+        ForcePlay(state);
     }
 
     float GetClipLength(string state)
