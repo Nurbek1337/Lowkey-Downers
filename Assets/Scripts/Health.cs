@@ -1,3 +1,4 @@
+
 using UnityEngine;
 using System.Collections;
 
@@ -21,7 +22,13 @@ public class Health : MonoBehaviour
     void Start()
     {
         currentHealth = maxHealth;
-        spriteRenderer = GetComponent<SpriteRenderer>();
+
+        Transform visual = transform.Find("PlayerVisual");
+
+        if (visual != null)
+            spriteRenderer = visual.GetComponent<SpriteRenderer>();
+        else
+            spriteRenderer = GetComponent<SpriteRenderer>();
     }
 
     void Update()
