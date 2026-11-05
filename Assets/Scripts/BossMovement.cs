@@ -1,4 +1,3 @@
-
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody2D))]
@@ -42,19 +41,22 @@ public class BossMovement : MonoBehaviour
 
     void Update()
     {
-        if (player == null) return;
+        if (BossStunSystem.IsStunned)
+            return;
+
+        if (player == null)
+            return;
 
         positionTimer -= Time.deltaTime;
 
         if (positionTimer <= 0f)
-        {
             ChooseNewPosition();
-        }
     }
 
     void FixedUpdate()
     {
-        if (player == null) return;
+        if (BossStunSystem.IsStunned || player == null)
+            return;
 
         float hover = Mathf.Sin(
             Time.time * hoverSpeed + hoverOffset
@@ -82,7 +84,8 @@ public class BossMovement : MonoBehaviour
 
     void ChooseNewPosition()
     {
-        if (player == null) return;
+        if (player == null)
+            return;
 
         float distance = Random.Range(minDistance, maxDistance);
         float side = Random.value < 0.5f ? -1f : 1f;

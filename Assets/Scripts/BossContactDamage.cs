@@ -1,6 +1,6 @@
-
 using UnityEngine;
 
+/// <summary>Урон при касании тела босса. Бьёт только игровых персонажей (не босса, не приручённых существ).</summary>
 public class BossContactDamage : MonoBehaviour
 {
     public int damage = 10;
@@ -10,17 +10,14 @@ public class BossContactDamage : MonoBehaviour
 
     private void OnTriggerStay2D(Collider2D other)
     {
-        if (Time.time < nextAttackTime)
-            return;
+        if (BossStunSystem.IsStunned) return;
+        if (Time.time < nextAttackTime) return;
 
-        Health target = other.GetComponent<Health>();
+        if (other.GetComponentInParent<CharacterStats>() == null) return;
+        Health target = other.GetComponentInParent<Health>();
+        if (target == null || target.IsDead) return;
 
-        if (target != null)
-        {
-            target.TakeDamage(damage);
-            nextAttackTime = Time.time + attackCooldown;
-
-            Debug.Log("Босс нанёс игроку урон!");
-        }
+        target.TakeBossDamage(damage, transform);
+        nextAttackTime = Time.time + attackCooldown;
     }
 }

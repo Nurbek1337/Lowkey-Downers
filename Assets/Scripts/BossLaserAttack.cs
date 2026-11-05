@@ -42,15 +42,18 @@ public class BossLaserAttack : MonoBehaviour
     private RigidbodyConstraints2D originalConstraints;
     private bool originalMovementState;
     private bool laserLockOwned;
-    private bool attackRunning;
+
+    public void SetTargetPlayer(Transform target)
+    {
+        player = target;
+        playerHealth = target != null ? target.GetComponentInParent<Health>() : null;
+    }
 
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         spriteRenderer = GetComponent<SpriteRenderer>();
-
         originalConstraints = rb.constraints;
-
         CreateLasers();
     }
 
@@ -59,8 +62,7 @@ public class BossLaserAttack : MonoBehaviour
         if (spriteRenderer != null)
             originalColor = spriteRenderer.color;
 
-        if (player != null)
-            playerHealth = player.GetComponent<Health>();
+        RefreshPlayerHealth();
 
         StartCoroutine(AttackLoop());
     }
@@ -69,23 +71,15 @@ public class BossLaserAttack : MonoBehaviour
     {
         for (int i = 0; i < 4; i++)
         {
-            GameObject laserObject =
-                new GameObject("BossLaser_" + i);
-
+            GameObject laserObject = new GameObject("BossLaser_" + i);
             laserObject.transform.SetParent(transform);
 
-            LineRenderer line =
-                laserObject.AddComponent<LineRenderer>();
-
+            LineRenderer line = laserObject.AddComponent<LineRenderer>();
             line.positionCount = 2;
             line.useWorldSpace = true;
             line.startWidth = laserWidth;
             line.endWidth = laserWidth;
-
-            line.material = new Material(
-                Shader.Find("Sprites/Default")
-            );
-
+            line.material = new Material(Shader.Find("Sprites/Default"));
             line.startColor = Color.red;
             line.endColor = Color.red;
             line.sortingOrder = 10;
@@ -99,20 +93,18 @@ public class BossLaserAttack : MonoBehaviour
     {
         while (true)
         {
-            yield return new WaitForSeconds(attackCooldown);
+            yield return BossStunSystem.Wait(attackCooldown);
 
             if (player == null)
                 continue;
 
-            // Ждём, пока остальные атаки закончатся
             while (!BossAttackLock.TryStartLaser())
-                yield return new WaitForSeconds(0.2f);
+                yield return BossStunSystem.Wait(0.2f);
 
             laserLockOwned = true;
 
             yield return StartCoroutine(LaserAttack());
 
-            // Освобождаем специальную блокировку
             BossAttackLock.EndLaser();
             laserLockOwned = false;
         }
@@ -120,9 +112,6 @@ public class BossLaserAttack : MonoBehaviour
 
     IEnumerator LaserAttack()
     {
-        attackRunning = true;
-
-        // Останавливаем обычное движение
         if (bossMovement != null)
         {
             originalMovementState = bossMovement.enabled;
@@ -131,9 +120,14 @@ public class BossLaserAttack : MonoBehaviour
 
         rb.constraints = originalConstraints;
 
-        // Перемещение в центр арены
         while (Vector2.Distance(rb.position, arenaCenter) > 0.1f)
         {
+            if (BossStunSystem.IsStunned)
+            {
+                yield return null;
+                continue;
+            }
+
             Vector2 nextPosition = Vector2.MoveTowards(
                 rb.position,
                 arenaCenter,
@@ -141,19 +135,16 @@ public class BossLaserAttack : MonoBehaviour
             );
 
             rb.MovePosition(nextPosition);
-
             yield return new WaitForFixedUpdate();
         }
 
         rb.position = arenaCenter;
-
-        // Полностью замораживаем босса
         rb.constraints = RigidbodyConstraints2D.FreezeAll;
 
         if (spriteRenderer != null)
             spriteRenderer.color = Color.red;
 
-        yield return new WaitForSeconds(warningTime);
+        yield return BossStunSystem.Wait(warningTime);
 
         if (spriteRenderer != null)
             spriteRenderer.color = originalColor;
@@ -164,13 +155,17 @@ public class BossLaserAttack : MonoBehaviour
         currentAngle = 0f;
         nextDamageTime = 0f;
 
-        // Разгон лазеров
         float timer = 0f;
 
         while (timer < accelerationTime)
         {
-            float progress = timer / accelerationTime;
+            if (BossStunSystem.IsStunned)
+            {
+                yield return null;
+                continue;
+            }
 
+            float progress = timer / accelerationTime;
             float speed = Mathf.Lerp(
                 startRotationSpeed,
                 maxRotationSpeed,
@@ -178,18 +173,21 @@ public class BossLaserAttack : MonoBehaviour
             );
 
             RotateLasers(speed);
-
             timer += Time.deltaTime;
             yield return null;
         }
 
-        // Замедление лазеров
         timer = 0f;
 
         while (timer < slowdownTime)
         {
-            float progress = timer / slowdownTime;
+            if (BossStunSystem.IsStunned)
+            {
+                yield return null;
+                continue;
+            }
 
+            float progress = timer / slowdownTime;
             float speed = Mathf.Lerp(
                 maxRotationSpeed,
                 0f,
@@ -197,7 +195,6 @@ public class BossLaserAttack : MonoBehaviour
             );
 
             RotateLasers(speed);
-
             timer += Time.deltaTime;
             yield return null;
         }
@@ -205,9 +202,8 @@ public class BossLaserAttack : MonoBehaviour
         foreach (LineRenderer laser in lasers)
             laser.enabled = false;
 
-        yield return new WaitForSeconds(1f);
+        yield return BossStunSystem.Wait(1f);
 
-        // Возвращаем движение
         rb.constraints = originalConstraints;
 
         if (bossMovement != null)
@@ -216,9 +212,7 @@ public class BossLaserAttack : MonoBehaviour
         if (spriteRenderer != null)
             spriteRenderer.color = originalColor;
 
-        attackRunning = false;
-
-        Debug.Log("ЛАЗЕР ЗАВЕРШЁН. ОСТАЛЬНЫЕ АТАКИ МОГУТ ПРОДОЛЖАТЬСЯ.");
+        Debug.Log("ЛАЗЕР ЗАВЕРШЁН.");
     }
 
     void RotateLasers(float speed)
@@ -248,7 +242,9 @@ public class BossLaserAttack : MonoBehaviour
 
     void CheckLaserHit(Vector2 origin, Vector2 direction)
     {
-        if (player == null || playerHealth == null)
+        RefreshPlayerHealth();
+
+        if (BossStunSystem.IsStunned || player == null || playerHealth == null)
             return;
 
         RaycastHit2D[] hits = Physics2D.RaycastAll(
@@ -259,20 +255,23 @@ public class BossLaserAttack : MonoBehaviour
 
         foreach (RaycastHit2D hit in hits)
         {
-            if (hit.collider == null)
-                continue;
-
-            if (hit.collider.transform.root != player.root)
+            if (hit.collider == null || hit.collider.transform.root != player.root)
                 continue;
 
             if (Time.time >= nextDamageTime)
             {
-                playerHealth.TakeDamage(laserDamage);
+                playerHealth.TakeDamage(laserDamage, transform);
                 nextDamageTime = Time.time + damageCooldown;
             }
 
             break;
         }
+    }
+
+
+    private void RefreshPlayerHealth()
+    {
+        playerHealth = player != null ? player.GetComponentInParent<Health>() : null;
     }
 
     void OnDisable()
